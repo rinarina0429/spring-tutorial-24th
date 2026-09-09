@@ -3,12 +3,72 @@ CEOS 백엔드 24기 스프링 튜토리얼
 
 ## 1️⃣ spring이 지원하는 기술들(IoC/DI, AOP, PSA 등)을 자유롭게 조사해요
 
-### IoC/DI
+스프링에는 세가지 핵심 기술이 있습니다. 스프링 삼각형이라고도 부르는 3대 핵심 요소는 IoC/DI, AOP, PSA로, 이들은 서로 매우 긴밀하게 협력하여 동작합니다. 이들의 공통된 최종 목표는 순수한 자바 객체(POJO)를 유지하면서 결합도를 낮추고 유연한 서버 애플리케이션을 만드는 것입니다.
 
-- 제어의 역전(Inversion of Control)과 의존성 주입(Dependency Injection)
-- Spring에서는 IoC 컨테이너가 객체 간의 의존성을 주입
-  → 코드가 인터페이스에만 의존하게 되어 결합도가 낮아짐
-- 공식 문서에서는 특히 생성자 주입(Constructor Injection)을 권장
+<img src="img/spring_triangle.png" width="50%">
+
+근데? 사실 백번 읽어봐도 모르겠으니! 하나씩 공부해봅시다.
+
+### ① IoC/DI
+
+IoC/DI는 제어의 역전(Inversion of Control)과 의존성 주입(Dependency Injection)의 줄임말입니다.
+Spring에서는 **IoC 컨테이너**가 객체 간의 의존성을 주입합니다.
+여기서 '의존성 주입'은 '제어의 역전'의 특수한 형태입니다.
+<br><br>
+예시를 통해 조금 더 쉽게 살펴보도록 하겠습니다.
+<br>
+요리사가 국수를 요리하는 상황을 자바 코드로 비교해봅시다.
+
+```java
+public class Chef {
+private PorkSpine meat;
+
+    public Chef() {
+        // 요리사가 직접 구체적인 객체를 생성합니다 (제어권이 요리사에게 있음)
+        this.meat = new PorkSpine(); 
+    }
+
+    public void cook() {
+        System.out.println("푹 고아낸 " + meat.getName() + " 국수 완성!");
+    }
+}
+```
+위 코드에서, 요리사는 직접 구체적인 객체를 생성합니다. 즉, 제어권이 요리사에게 있죠. 하지만 이 경우 돼지등뼈가 소진되면 어떻게 해야 할까요? 요리사가 직접 정육점까지 뛰어가 돼지등뼈를 사와야 하는 상황이 발생합니다.
+<br>
+하지만 요리사가 아닌, 사장님이 출근길에 고기를 사오면 훨씬 좋지 않을까요? 그리고 돼지등뼈가 없어도, 다른 고기를 넣을 수 있으면 더 편하지 않을까요?
+
+```java
+@Component
+public class Chef {
+    private final Meat meat;
+
+    // 요리사는 추상적인 '고기(Meat 인터페이스)'면 뭐든 받아서 요리합니다.
+    // 객체 생성과 공급의 제어권(IoC)이 스프링 사장님에게 넘어갔습니다!
+    @Autowired 
+    public Chef(Meat meat) {
+        this.meat = meat; 
+    }
+
+    public void cook() {
+        System.out.println("푹 고아낸 " + meat.getName() + " 국수 완성!");
+    }
+}
+```
+식당 사장님, 즉 스프링 컨테이너에게 제어권을 넘기면 요리사는 "고기"이기만 하면 뭐든 받아 요리하면 되는 편리한 상황이 됩니다.
+또한 코드가 인터페이스에만 의존하게 되어 결합도가 낮아지죠.
+<br>
+위 예시 코드에서 본 방식은 생성자 주입(Constructor Injection) 방식입니다.
+<br>
+사실 의존성을 주입하는 방법에는 생성자 주입 뿐만 아니라 수정자 주입(Setter Injection), 필드 주입(Field Injection) 방식도 있습니다. 하지만 공식 문서에서는 특히 생성자 주입 방식을 권장합니다.
+- 우선 생성 시점에 딱 한 번만 호출되므로 주입받은 의존성이 런타임에 변하지 않음(**불변성**)을 보장합니다.
+- 또한 필드에 final 키워드를 사용할 수 있어, 만약 의존성 주입을 깜빡하더라도 애플리케이션 실행 전 컴파일 단계에서 바로 에러를 잡아낼 수 있습니다. 즉, **필수 의존성**을 보장하는거죠.
+- 그 외에도 순환 참조를 방지할 수 있고, 테스트 시에 Mock 객체를 사용하기에 용이하다는 등의 이점이 있습니다.
+
+그럼 이제 제어가 역전된다는게 어떤 느낌인지 알겠죠?
+<br>
+만약 아직도 이해가 안된다면 [의존성 주입 3분만에 이해하기 (Dependency Injection, Inversion of Control)](https://youtu.be/1vdeIL2iCcM?si=_hvHcxvKs-Z8tq3b) 영상을 추천드립니다.
+<br>
+이해가 되셨다면! 실제 스프링에서는 아래와 같이 제어의 역전이 사용됩니다. 
 
 ```java
 import org.springframework.stereotype.Service;
@@ -140,3 +200,7 @@ public class OrderService {
 2. 핸들러 조회 (`HandlerMapping`)
 3. 어댑터 조회 및 실행 (`HandlerAdapter`)
 4. 결과 처리 및 응답 반환
+
+---
+
+이번 과제를 수행하면서 관련된 개념들에 대한 유튜브 영상들로부터 많은 도움을 받았습니다. 제가 집중력이 짧아 영상의 도움을 받은 것도 있지만... 생각보다 유튜브에 고수들이 너무나 쉽게 풀어서 설명한 영상들이 참 많답니다? 모두 알고 계시겠지만 한번 상기시켜드리고 갑니다...👍
