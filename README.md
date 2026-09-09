@@ -90,12 +90,59 @@ public class UserService {
 
 ```
 
-### AOP
+### ② AOP
 
-- Aspect-Oriented Programming
-- 객체 지향 프로그래밍을 보완하는 구조
-- 애플리케이션 전반에 흩어져 있는 교차 관심사(ex. 로깅, 보안, 트랜잭션)를 별도의 모듈(Aspect)로 분리
-- 스프링은 런타임 프록시 방식으로 이를 구현
+자, 이제 AOP입니다. 여러분은 모두 AOP를 잘 사용하고 있을겁니다. 자주 쓰이는 `@Transactional` 또한 AOP의 일종이라고 할 수 있기 때문이죠.
+이런 AOP는 Aspect-Oriented Programming의 줄임말데요, 말 그대로 관점 지향 프로그래밍을 뜻합니다.
+AOP, 관점 지향 프로그래밍이라는 말만 들으면 OOP, 객체 지향 프로그래밍과 공존할 수 없는 것처럼 들릴 수 있습니다. 하지만 AOP는 OOP 프로그래밍을 보완하는 구조입니다.
+실제로 [Spring의 공식 문서](https://docs.spring.io/spring-framework/reference/core/aop.html#page-title)에는 다음과 같이 쓰여있습니다.
+
+> Aspect-oriented Programming (AOP) complements Object-oriented Programming (OOP) by providing another way of thinking about program structure.
+
+그리고 관점 지향은 쉽게 말해, '핵심 비즈니스 로직'과 '반복되는 부가 기능'을 완벽하게 분리해 내는 기술입니다. 즉, 애플리케이션 전반에 흩어져 있는 교차 관심사(ex. 로깅, 보안, 트랜잭션)를 별도의 모듈(Aspect)로 분리합니다.
+<br><br>
+예를 들어 은행 시스템을 개발한다고 상상해 볼까요?
+<br><br>
+<img src="img/spring_aop.png" width="70%">
+<br><br>
+'계좌 이체', '대출 승인', '잔액 조회'처럼 각 모듈이 수행해야 하는 진짜 비즈니스 로직이 있습니다. 반면, '보안 검사', 'DB 연동(트랜잭션)', '실행 시간 로깅' 같은 인프라 로직은 이체, 대출, 조회 기능을 실행할 때마다 공통으로 앞뒤에 들어가야 하죠.
+<br>
+이런 여러 고유 기능들(세로)을 가로지르며(횡단하며) 똑같이 나타나는 로직들을 '횡단 관심사(Cross-cutting Concerns)'라고 부릅니다.
+AOP는 이렇게 가로로 겹치는 횡단 관심사들을 가위로 오려내어 별도의 클래스(Aspect)에 따로 모아둡니다. 그리고 프레임워크에 이 코드들을 런타임 시 앞뒤로 끼워 넣어달라고 설정해둡니다.
+결과적으로 개발자는 복잡한 인프라 코드를 신경 쓸 필요 없이, '계좌 이체'라는 순수한 핵심 로직 작성에만 100% 집중할 수 있게 되는거죠.
+<br>
+만약 AOP가 없다면 개발자는 계좌 이체 코드에도, 대출 승인 코드에도 매번 보안검사(), 트랜잭션시작(), 로깅() 코드를 똑같이 복사해서 붙여넣어야 할겁니다. 보안 검사 방식이 업데이트라도 되면 수백 개의 파일을 열어 일일이 수정해야 하는 끔찍한 일이 벌어지고, 비즈니스 로직은 단 3줄인데, 부가 기능 코드가 20줄을 차지해 코드를 읽기도 힘들어지게 됩니다.
+<br><br>
+그러면 AOP는 어떻게 적용할 수 있을까요? AOP를 실제 코드에 적용하는 방식은 시점에 따라 크게 컴파일 타임, 클래스 로드 타임, 런타임 세 가지로 나뉩니다. 그리고 Spring AOP는 이 중 프록시 패턴을 기반으로 한 런타임(Run-time) 방식을 사용합니다.
+스프링 컨테이너가 IoC/DI를 통해 객체(Bean)의 생성과 의존성 주입을 직접 통제하기 때문에, 실제 객체 대신 부가 기능이 씌워진 프록시 객체를 런타임에 동적으로 주입할 수 있는거죠.
+<br>
+아래와 같은 예시 코드가 AOP를 잘 보여줍니다.
+
+```java
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+public class LoggingAspect {
+
+    // Service 클래스의 모든 메서드 실행 전후에 공통 로깅 기능 적용
+    @Around("execution(* com.example..*Service.*(..))")
+    public Object logExecutionTime(ProceedingJoinPoint joinPoint) throws Throwable {
+        long start = System.currentTimeMillis();
+        
+        Object proceed = joinPoint.proceed(); // 실제 핵심 비즈니스 로직 실행
+        
+        long executionTime = System.currentTimeMillis() - start;
+        System.out.println(joinPoint.getSignature() + " 실행 시간: " + executionTime + "ms");
+        return proceed;
+    }
+}
+```
+
+더 나은 AOP의 이해를 위해 [[10분 테코톡] 🌕제이의 Spring AOP](https://youtu.be/Hm0w_9ngDpM?si=hRbn6y1DWXYCic4F) 영상을 추천드립니다.
 
 ### PSA
 
