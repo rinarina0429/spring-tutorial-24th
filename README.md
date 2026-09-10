@@ -5,7 +5,7 @@ CEOS 백엔드 24기 스프링 튜토리얼
 
 스프링에는 세가지 핵심 기술이 있습니다. 스프링 삼각형이라고도 부르는 3대 핵심 요소는 IoC/DI, AOP, PSA로, 이들은 서로 매우 긴밀하게 협력하여 동작합니다. 이들의 공통된 최종 목표는 순수한 자바 객체(POJO)를 유지하면서 결합도를 낮추고 유연한 서버 애플리케이션을 만드는 것입니다.
 
-<img src="img/spring_triangle.png" width="50%">
+<img src="img/spring_triangle.png" width="30%">
 
 근데? 사실 백번 읽어봐도 모르겠으니! 하나씩 공부해봅시다.
 
@@ -144,28 +144,67 @@ public class LoggingAspect {
 
 더 나은 AOP의 이해를 위해 [[10분 테코톡] 🌕제이의 Spring AOP](https://youtu.be/Hm0w_9ngDpM?si=hRbn6y1DWXYCic4F) 영상을 추천드립니다.
 
-### PSA
+### ③ PSA
 
-- 일관된 서비스 추상화 (Service Abstraction)
-- Transaction, Cache, Messaging 등의 인프라 기술을 사용할 때, 특정 기술(JDBC, JPA, Hibernate 등)의 API에 종속되지 않고 동일한 프로그래밍 모델을 사용할 수 있도록 추상화를 제공
+마지막으로 PSA입니다. PSA는 Portable Service Abstraction의 줄임말로, 일관된 서비스 추상화라고도 합니다.
+
+쉽게 말하면 PSA는 어떤 기술을 사용하든 개발자가 비슷한 방식으로 사용할 수 있도록 중간에 추상화 계층을 만들어주는 것입니다.
+
+예를 들어 우리가 해외여행을 간다고 생각해봅시다.
+<br>
+한국에서는 콘센트에 충전기를 바로 꽂을 수 있지만, 다른 나라에서는 콘센트 모양이나 전압이 다를 수 있습니다. 그렇다고 여행을 갈 때마다 노트북이나 휴대폰의 충전 방식을 전부 고칠 수는 없겠죠.
+그래서 우리는 어댑터를 사용합니다. 사용자는 똑같은 충전기를 사용하고, 어댑터가 각 나라의 콘센트 규격에 맞게 변환해주죠.
+
+Spring의 PSA도 비슷합니다.
+개발자가 특정 기술의 세부적인 사용 방법을 일일이 알지 못하더라도, Spring이 제공하는 일관된 인터페이스를 사용하면 내부 구현 기술을 비교적 자유롭게 변경할 수 있도록 만들어줍니다.
+
+대표적인 예가 바로 트랜잭션 추상화입니다.
+앞의 AOP 설명에서 나왔던 `@Transactional`을 다시 생각해볼까요?
 
 ```java
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 @Service
 public class OrderService {
-
-    // JDBC, JPA, JTA 등 데이터 접근 기술이 무엇이든 상관없이
-    // 동일한 어노테이션 하나로 트랜잭션 경계를 설정하고 롤백/커밋을 관리
+    
     @Transactional
-    public void placeOrder(Order order) {
-        inventoryRepository.decreaseStock(order.getItemId());
-        orderRepository.save(order);
+    public void createOrder() {
+        // 주문 저장
+        // 결제 처리
+        // 재고 감소
     }
 }
-
 ```
+
+개발자인 우리는 그냥 `@Transactional`을 붙입니다.
+<br>
+그런데 실제로 트랜잭션을 처리하는 기술은 프로젝트마다 다를 수 있습니다.
+어떤 프로젝트에서는 JDBC를 사용할 수도 있고, 다른 프로젝트에서는 JPA를 사용할 수도 있고, 또 다른 환경에서는 JTA와 같은 트랜잭션 기술을 사용할 수도 있습니다.
+만약 Spring의 추상화가 존재하지 않는다면 사용하는 기술이 바뀔 때마다 개발자가 트랜잭션 시작, 커밋, 롤백을 처리하는 코드를 해당 기술의 API에 맞게 다시 작성해야 할 수도 있습니다.
+하지만 Spring은 이들 사이에 트랜잭션 추상화 계층을 제공합니다.
+그 중심에 있는 인터페이스가 `PlatformTransactionManager`입니다.
+
+```java
+public interface PlatformTransactionManager extends TransactionManager {
+    
+    TransactionStatus getTransaction(TransactionDefinition definition)
+            throws TransactionException;
+    
+    void commit(TransactionStatus status)
+            throws TransactionException;
+    
+    void rollback(TransactionStatus status)
+            throws TransactionException;
+}
+```
+
+실제로 사용하는 기술에 따라서 이 인터페이스의 구현체가 달라집니다.
+예를 들어 JPA를 사용한다면 `JpaTransactionManager`가 사용될 수 있고, JDBC 기반 환경이라면 JDBC에 맞는 TransactionManager가 사용될 수 있습니다.
+중요한 것은 비즈니스 로직을 작성하는 개발자가 이러한 차이를 직접 처리하지 않아도 된다는거죠.
+Spring의 공식 문서에서도 Spring의 트랜잭션 지원이 JDBC, JTA, Hibernate, JPA처럼 서로 다른 트랜잭션 API에 대해 일관된 프로그래밍 모델을 제공한다고 설명합니다.
+
+즉, 우리의 비즈니스 코드는 그대로 두고, 내부에서 사용하는 트랜잭션 기술이나 구현체를 변경할 수 있게 되는 것입니다.
+덕분에 애플리케이션의 상위 계층이 특정 DB 기술의 예외 클래스에 강하게 의존하는 것을 줄일 수 있습니다.
+
+결국 한줄로 정리하면, PSA의 핵심은 "구체적인 기술은 바뀌어도, 그것을 사용하는 애플리케이션의 코드는 최대한 바뀌지 않도록 만드는 것"이 아닐까요?
 
 ---
 
