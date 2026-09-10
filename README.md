@@ -206,6 +206,78 @@ Spring의 공식 문서에서도 Spring의 트랜잭션 지원이 JDBC, JTA, Hib
 
 결국 한줄로 정리하면, PSA의 핵심은 "구체적인 기술은 바뀌어도, 그것을 사용하는 애플리케이션의 코드는 최대한 바뀌지 않도록 만드는 것"이 아닐까요?
 
+### ✔ 그래서, IoC/DI, AOP, PSA는 서로 무슨 관계인데?
+
+지금까지 세 가지를 따로 공부했지만, 사실 이 기술들은 서로 독립적으로 존재하는 것이 아닙니다.
+<br>
+처음에 Spring의 세 가지 핵심 기술이 서로 매우 긴밀하게 협력한다고 했던 것을 기억하시나요?
+<br>
+`@Transactional` 하나만 살펴봐도 세 기술이 어떻게 협력하는지 알 수 있습니다.
+
+```java
+@Service
+public class OrderService {
+    
+    private final OrderRepository orderRepository;
+    
+    public OrderService(OrderRepository orderRepository) {
+        this.orderRepository = orderRepository;
+    }
+    
+    @Transactional
+    public void createOrder() {
+        orderRepository.save();
+    }
+}
+```
+
+먼저 **IoC/DI**를 통해 Spring 컨테이너가 `OrderService`, `OrderRepository`, `TransactionManager` 등의 객체를 생성하고 서로 연결해줍니다.
+그리고 `@Transactional`이 붙은 메서드에는 **AOP**가 적용됩니다.
+Spring은 실제 `OrderService` 앞에 프록시 객체를 두고 메서드 실행 전 트랜잭션을 시작하고, 정상적으로 끝나면 커밋하고, 문제가 생기면 롤백합니다.
+Spring의 선언적 트랜잭션 역시 이러한 프록시와 인터셉터 구조를 사용합니다.
+마지막으로 실제 트랜잭션 처리는 PSA를 통해 추상화되어 있습니다.
+개발자는 JDBC인지 JPA인지 JTA인지에 따라 서로 다른 코드를 작성하는 대신 Spring의 일관된 트랜잭션 추상화를 사용합니다.
+
+결국 세 가지를 합쳐보면 다음과 같습니다.
+
+```bash
+                    Spring Container
+                          │
+                      IoC / DI
+                          │
+                          ▼
+                  ┌────────────────┐
+                  │ OrderService   │
+                  │                │
+                  │ createOrder()  │← 핵심 비즈니스 로직
+                  └────────────────┘
+                          ▲
+                          │
+                      AOP Proxy
+                 ┌────────┴────────┐
+                 │ Transaction     │
+                 │ Logging         │
+                 │ Security ...    │
+                 └─────────────────┘
+                          │
+                         PSA
+             ┌────────────┼────────────┐
+             ▼            ▼            ▼
+           JDBC          JPA          JTA
+```
+
+- IoC/DI는 객체 간의 관계를 유연하게 만들고,
+- AOP는 반복되는 부가 기능을 핵심 로직으로부터 분리하며,
+- PSA는 구체적인 기술의 차이를 추상화합니다.
+
+그리고 그 결과 개발자는 특정 프레임워크나 인프라 기술에 지나치게 얽매이지 않은 POJO 중심의 비즈니스 로직을 작성할 수 있게 됩니다.
+
+이제 Spring 코드를 보면
+
+> "IoC/DI로 관리되는 Bean에 AOP 프록시가 적용되고, 그 뒤에서는 Spring의 서비스 추상화를 통해 실제 기술이 동작하고 있구나!"
+
+라고 생각할 수 있지 않을까요? 😽
+
 ---
 
 ## 2️⃣ Spring Bean 이 무엇이고, Bean 의 라이프사이클과 Bean Scope에 대해 조사해요
