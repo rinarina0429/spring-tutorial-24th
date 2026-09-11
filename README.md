@@ -204,7 +204,7 @@ Spring의 공식 문서에서도 Spring의 트랜잭션 지원이 JDBC, JTA, Hib
 즉, 우리의 비즈니스 코드는 그대로 두고, 내부에서 사용하는 트랜잭션 기술이나 구현체를 변경할 수 있게 되는 것입니다.
 덕분에 애플리케이션의 상위 계층이 특정 DB 기술의 예외 클래스에 강하게 의존하는 것을 줄일 수 있습니다.
 
-결국 한줄로 정리하면, PSA의 핵심은 "구체적인 기술은 바뀌어도, 그것을 사용하는 애플리케이션의 코드는 최대한 바뀌지 않도록 만드는 것"이 아닐까요?
+결국 한줄로 정리하면, PSA의 핵심은 "구체적인 기술은 바뀌어도, 그것을 사용하는 애플리케이션의 코드는 최대한 바뀌지 않도록 만드는 것"이라고 할 수 있을 것 같습니다.
 
 ### ✔ 그래서, IoC/DI, AOP, PSA는 서로 무슨 관계인데?
 
@@ -282,45 +282,1068 @@ Spring의 선언적 트랜잭션 역시 이러한 프록시와 인터셉터 구�
 
 ## 2️⃣ Spring Bean 이 무엇이고, Bean 의 라이프사이클과 Bean Scope에 대해 조사해요
 
-### 1. Spring Bean, Lifecycle, Bean Scope
+Spring을 사용하다 보면 Bean이라는 단어를 자주 듣게 됩니다.
 
-- **Spring Bean 이란?**<br>
-  스프링 IoC 컨테이너에 의해 인스턴스화되고, 조립되며, 관리되는 객체
-- **Bean Lifecycle (생명주기)**<br>
-  - 스프링 컨테이너는 빈의 생성부터 소멸까지의 과정을 관리하며, 특정 시점에 개발자가 개입할 수 있는 콜백(Callback)을 제공
-  - **과정:** 인스턴스화 → 의존성 주입(DI) → 초기화 콜백(Initialization) → 빈 사용 → 소멸 콜백(Destruction)
-- **Bean Scope (스코프)**
-  - 빈이 생성되고 존재하는 범위
-  - **`singleton` (기본값):** 스프링 컨테이너당 단 하나의 공유 인스턴스만 생성되는 것
-  - **`prototype`:** 컨테이너에 빈을 요청(주입)할 때마다 매번 새로운 인스턴스를 생성하는 것
-  - **웹 전용 스코프:** 웹 환경에서만 유효하며 `request`(HTTP 요청당 하나), `session`(HTTP 세션당 하나), `application`(ServletContext당 하나), `websocket` 등
+```java
+@Service
+public class UserService {
+  ...
+}
+```
+이런 코드를 작성할 때도, "`UserService`는 Spring Bean으로 등록된다"라고 하는데요,
+우린 그저 평범한 Java 클래스에 `@Service`라는 어노테이션을 붙인 것 뿐인데 대체 Spring은 이 클래스를 어떻게 발견하는거고,
+Bean으로 등록된다는건 정확히 무슨 뜻인걸까요?
 
-### 2. Java 어노테이션(Annotation)과 구현
+Spring Bean이 애플리케이션 시작 과정에서 어떻게 발견되고, 만들어지고, 사용되다가, 사라지는지 하나씩 알아봅시다!
 
-- 어노테이션은 프로그램 소스 코드에 추가할 수 있는 메타데이터(Metadata)
-- 프로그램의 비즈니스 로직 자체에는 직접적인 영향을 주지 않지만, 컴파일러에게 정보를 제공하거나 런타임 시 특정 기능을 수행하도록 프레임워크에 힌트를 준다.
-- **Java에서의 구현:**
-  - `@interface` 키워드를 사용하여 선언
-  - **메타 어노테이션:** `@Target`(적용 대상: 클래스, 메서드, 필드 등)과 `@Retention`(유지 정책: Source, Class, Runtime)을 통해 동작 방식을 정의 
-  - 스프링과 같은 프레임워크는 주로 `@Retention(RetentionPolicy.RUNTIME)`으로 설정된 어노테이션을 **리플렉션(Reflection) API**를 통해 런타임에 읽어들여 부가적인 처리를 수행
+### Spring Bean?
 
-### 3. 스프링의 어노테이션 기반 Bean 등록 과정
+먼저 Bean부터 알아봅시다.
+Spring Bean이란, Spring IoC Container가 생성하고 관리하는 객체입니다.
 
-스프링에서 `@Component`나 `@Bean` 어노테이션을 사용해 빈을 등록할 때 컨테이너 내부에서 일어나는 과정
+> A bean is an object that is instantiated, assembled, and managed by a Spring IoC container.
+> <br>
+> [Spring 공식문서](https://docs.spring.io/spring-framework/reference/core/beans/introduction.html)
 
-1. **메타데이터 읽기:** 설정 클래스(예: `@Configuration`이 붙은 클래스) 읽기
-2. **BeanDefinition 생성:** 컨테이너는 즉시 객체를 생성하지 않고, 어노테이션 정보를 바탕으로 빈의 설계도격인 **`BeanDefinition`** 객체를 생성. 여기에는 빈의 클래스 이름, 스코프, 초기화 메서드, 의존성 정보 등이 담김.
-3. **레지스트리 등록:** 생성된 `BeanDefinition`을 컨테이너 내부의 `BeanDefinitionRegistry`에 등록
-4. **인스턴스화 및 의존성 주입:** 빈 생성이 필요한 시점(싱글톤의 경우 컨테이너 초기화 시점)에 `BeanDefinition`을 기반으로 실제 Java 객체를 생성(Reflection 활용)하고, 필요한 의존성을 주입(DI)
+예를 들어 아래와 같은 평범한 객체가 있다고 해볼까요?
 
-### 4. `@ComponentScan`의 컴포넌트 탐색 과정 심층 분석
+```java
+public class Chef {
 
-`@ComponentScan`: 스프링이 어디서부터 컴포넌트를 찾을지(`basePackages`) 지정하고, 이를 자동으로 빈으로 등록하는 기능
+    public void cook() {
+        System.out.println("국수 완성!");
+    }
+}
+```
 
-1. **클래스패스 스캐닝 (Classpath Scanning):** `ClassPathBeanDefinitionScanner`가 지정된 베이스 패키지와 그 하위 패키지의 디렉토리를 파일 시스템이나 JAR 파일 내의 클래스패스에서 스캔
-2. **ASM을 통한 바이트코드 분석 (클래스 로딩 방지):** 스프링은 스캔 과정에서 메모리 낭비와 부작용을 막기 위해 런타임에 클래스를 직접 메모리에 로딩(Class Loading)하지 않고 대신 ASM이라는 바이트코드 조작 라이브러리를 기반으로 한 `MetadataReader`를 사용하여 `.class` 파일의 메타데이터만 빠르게 읽음
-3. **필터링 (Filtering):** 읽어들인 메타데이터 중 `@Component` 어노테이션(또는 이를 포함한 `@Service`, `@Repository`, `@Controller` 등의 메타 어노테이션)이 존재하는지 확인
-4. **BeanDefinition 등록:** 필터를 통과한 클래스들에 대해 `BeanDefinition`을 생성하고 레지스트리에 등록하여 이후 컨테이너가 빈으로 관리하게 함
+우리가 직접 객체를 생성하면,
+
+```java
+Chef chef = new Chef();
+```
+
+이 `Chef` 객체의 생성과 관리에 대한 책임은 전적으로 개발자에게 있습니다.
+
+반면,
+
+```java
+@Component
+public class Chef {
+
+    public void cook() {
+        System.out.println("국수 완성!");
+    }
+}
+```
+
+Spring이 `Chef`를 발견하고 객체를 생성해서 Spring Container 안에서 관리하기 시작하면, 이 객체를 **Spring Bean**이라고 부릅니다.
+
+Spring 공식 문서에서도 Bean을 구성하기 위한 정보를 **Bean Definition**으로 관리하며, 실제 애플리케이션 객체들은 이러한 Bean Definition을 바탕으로 Spring Container가 생성하고 관리한다고 설명합니다.
+
+그런데 여기서 중요한 개념 하나가 등장합니다.
+
+바로 **BeanDefinition**입니다.
+<br>
+BeanDefinition은 쉽게 말하면 Bean을 만들기 위한 설계도라고 볼 수 있습니다.
+예를 들어 Spring은, 먼저
+
+_"UserService라는 클래스를
+singleton으로 만들고,
+이런 의존성을 주입해서,
+userService라는 이름으로 관리해야겠다."_
+
+라는 정보를 등록합니다.
+<br>
+이 정보가 바로 `BeanDefinition`입니다.
+
+그리고 이후 실제 Bean을 생성할 시점이 되면 Spring Container가 이 설계도를 보고 객체를 생성합니다.
+
+```text
+@Component 발견
+      ↓
+BeanDefinition 생성
+      ↓
+BeanDefinitionRegistry에 등록
+      ↓
+필요한 시점에 실제 객체 생성
+      ↓
+Spring Bean
+```
+
+### Annotation
+
+그런데, 어노테이션은 대체 뭘까요?
+<br>
+Spring을 사용하면 정말 많은 어노테이션을 사용합니다.
+
+`@Component`, `@Service`, `@Repository`, `@Controller`, `@Autowired`, `@Transactional`, `@Configuration`, `@Bean`, ...
+
+Java에서 Annotation은 "코드에 추가적인 정보를 붙여두는 메타데이터"입니다.
+
+예를 들어 우리가 직접 어노테이션을 만들 수도 있습니다.
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface MyAnnotation {
+
+    String value() default "";
+}
+```
+
+그리고 아래와 같이 사용할 수 있습니다.
+
+```java
+@MyAnnotation("hello")
+public class UserService {
+}
+```
+
+하지만 여기서 어노테이션 자체는 아무런 행동도 하지 않는데요.
+`@MyAnnotation("hello")`를 붙였다고 갑자기 어떤 코드가 실행되는 것이 아니라, 누군가 이 어노테이션을 읽고, 의미를 부여해야 하는거죠.
+
+Java의 클래스는 `getAnnotation()`, `isAnnotationPresent()` 같은 API를 제공하므로 런타임에 특정 어노테이션이 존재하는지 확인할 수 있습니다.
+
+그럼 우리도 아래와 같이 어노테이션을 직접 읽어볼 수도 있겠죠?
+
+```java
+MyAnnotation annotation =
+        UserService.class.getAnnotation(MyAnnotation.class);
+
+System.out.println(annotation.value());
+```
+
+결과는 다음과 같습니다.
+
+```text
+hello
+```
+
+즉, Annotation은 메타데이터이고, Annotation에 그것을 해석하는 프로그램이 함께하면 실제 기능이 된다고 이해할 수 있을 것 같습니다.
+
+Spring도 마찬가지인데요, UserService에 붙은 `@Service`가 단순히 스스로 객체를 만드는 것이 아닙니다.
+Spring이 `@Service`라는 메타데이터를 발견하고, 이 클래스는 내가 관리해야겠다고 판단하기 때문에 Bean으로 등록되는 것입니다.
+
+그럼 Java에서 어노테이션은 어떻게 구현하는지 조금 더 살펴볼까요?
+
+Java의 어노테이션은 `@interface`라는 문법으로 정의합니다.
+
+```java
+public @interface MyAnnotation {}
+```
+
+이 문법은 단순히 `interface` 앞에 골뱅이를 붙인 이상한 문법처럼 보이지만, Java Language Specification에서는 Annotation Interface를 일반 Interface와 구분되는 특별한 형태의 Interface로 정의하고 있습니다.
+또한 Annotation Interface는 직접적으로 `java.lang.annotation.Annotation`을 상위 인터페이스로 가집니다.
+
+어노테이션을 만들 때 자주 등장하는 것이 바로 메타 어노테이션(Meta Annotation)인데요,
+<br>
+대표적으로 다음과 같은 것들이 있습니다.
+
+| 어노테이션         | 역할                                   |
+| ------------- | ------------------------------------ |
+| `@Target`     | 이 어노테이션을 어디에 붙일 수 있는지 지정             |
+| `@Retention`  | 어노테이션 정보를 언제까지 유지할지 지정               |
+| `@Documented` | JavaDoc 등에 어노테이션 정보를 포함              |
+| `@Inherited`  | 자식 클래스가 부모 클래스의 어노테이션을 상속받을 수 있도록 설정 |
+
+예를 들어,
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface MyAnnotation {
+}
+```
+
+이라고 정의했다면,
+
+`@Target(ElementType.TYPE)`은 클래스나 인터페이스 같은 **타입에 붙일 수 있다**는 의미이고,
+<br>
+`@Retention(RetentionPolicy.RUNTIME)`은 **실행 중에도 해당 어노테이션 정보를 확인할 수 있도록 유지한다**는 뜻입니다.
+
+Retention에는 크게 세 가지 정책이 있습니다.
+
+- `SOURCE`
+  - 소스 코드에만 존재
+  - 컴파일 후 사라짐
+- `CLASS`
+  - .class 파일까지 존재
+  - 일반적으로 Reflection을 통해 런타임에 사용할 수 없음
+- `RUNTIME`
+  - .class 파일에도 존재
+  - 런타임에도 조회 가능
+
+`@Retention`을 지정하지 않으면 기본값은 `CLASS`이며, `RUNTIME`으로 지정한 어노테이션은 Java Reflection API에서도 사용할 수 있습니다.
+<br>
+Spring의 `@Component` 역시 `RUNTIME`으로 유지되는 어노테이션입니다.
+
+그럼 자주 쓰이는 `@Component`, `@Service`, `@Repository`, `@Controller`는 뭐가 다른걸까요?
+<br>
+사실 이들의 뿌리는 모두 `@Component`입니다.
+<br>
+예를 들어, 개념적으로 `@Service`는 다음과 같은 구조를 가지고 있습니다.
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Component
+public @interface Service {
+
+    String value() default "";
+}
+```
+
+즉, `@Service` 위에 다시 `@Component`가 붙어 있습니다.
+<br>
+이렇게 **어노테이션 위에 붙어 있는 어노테이션**을 Meta Annotation이라고 합니다.
+
+따라서 Spring은
+
+```java
+@Component
+public class A {
+}
+```
+
+뿐만 아니라
+
+```java
+@Service
+public class B {
+}
+```
+
+도 `@Component` 계열의 Bean 후보로 인식할 수 있습니다.
+
+Spring 공식 문서에서도 `@Service`, `@Repository`, `@Controller`를 `@Component`의 특수화된 stereotype이라고 설명합니다.
+또한 `@Component`를 Meta Annotation으로 가지고 있는 사용자 정의 어노테이션 역시 컴포넌트 스캔의 대상이 될 수 있습니다.
+
+### @ComponentScan
+
+그런데 Spring은 `@Service`가 붙은 클래스를 어떻게 찾는 걸까요?
+
+우리는 Spring Boot 애플리케이션을 만들면 보통 다음 코드로 시작합니다.
+
+```java
+@SpringBootApplication
+public class MyApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(MyApplication.class, args);
+    }
+}
+```
+
+그런데 어디에도
+
+`new UserService();`, `new OrderService();`, `new PaymentService();` 같은 코드는 없습니다.
+
+그런데도 Spring은 우리가 만든 수많은 Service, Repository, Controller를 알아서 찾아냅니다.
+그 방법 중 하나가 바로 `@ComponentScan`입니다.
+
+`@SpringBootApplication`을 뜯어볼까요?
+<br>
+`@SpringBootApplication`은 하나의 단순한 어노테이션처럼 보이지만 내부적으로 여러 설정을 합쳐놓은 합성 어노테이션(Composed Annotation)입니다.
+
+핵심적으로 아래와 같은 세 기능을 포함합니다.
+
+```text
+@SpringBootApplication
+        │
+        ├── @SpringBootConfiguration
+        ├── @EnableAutoConfiguration
+        └── @ComponentScan
+```
+
+즉 우리가 직접 `@ComponentScan`을 작성하지 않아도 Spring Boot의 `@SpringBootApplication`이 Component Scan 기능을 활성화 하는거죠.
+
+그럼 `@ComponentScan`은 어디까지 탐색할까요?
+
+다음과 같은 프로젝트가 있다고 해봅시다.
+
+```text
+com.example.myapp
+│
+├── MyApplication.java
+│
+├── controller
+│   └── UserController.java
+│
+├── service
+│   └── UserService.java
+│
+└── repository
+    └── UserRepository.java
+```
+
+`MyApplication`이
+
+```java
+package com.example.myapp;
+
+@SpringBootApplication
+public class MyApplication {
+}
+```
+
+에 있다면 기본적인 컴포넌트 스캔 범위는 `com.example.myapp`와 그 하위 패키지가 됩니다.
+<br>
+따라서 `com.example.myapp.controller`, `com.example.myapp.service`, `com.example.myapp.repository`에 있는 컴포넌트들을 발견할 수 있습니다.
+
+Spring의 `@ComponentScan`은 별도의 `basePackages`가 지정되지 않으면 **해당 어노테이션을 선언한 클래스의 패키지부터 탐색**합니다.
+Spring Boot 역시 메인 애플리케이션 클래스를 프로젝트의 루트 패키지에 두는 것을 권장합니다.
+
+반대로 이런 구조라면 어떻게 될까요?
+
+```text
+com.example.app
+└── MyApplication.java
+
+com.example.service
+└── UserService.java
+```
+
+`UserService`는 `MyApplication`의 하위 패키지가 아니기 때문에 기본 Component Scan으로 발견되지 않을 수 있습니다.
+<br>
+이런 경우에는 직접 범위를 지정할 수도 있습니다.
+
+```java
+@ComponentScan(basePackages = "com.example")
+@Configuration
+public class AppConfig {
+}
+```
+
+하지만 일반적인 Spring Boot 프로젝트에서는 메인 클래스를 최상위 패키지에 두는 것만으로 대부분의 문제를 피할 수 있습니다.
+
+이제 좀 더 깊이 들어가 볼까요?
+`@ComponentScan` 내부에서는 무슨 일이 일어날까요?
+
+다음과 같은 코드가 있다고 해보겠습니다.
+
+```java
+@Configuration
+@ComponentScan("com.example")
+public class AppConfig {
+}
+```
+
+그리고
+
+```java
+@Service
+public class UserService {
+}
+```
+
+가 존재한다고 해볼까요?
+
+전체적인 과정은 다음과 같습니다.
+
+```text
+Spring Container 시작
+        ↓
+@Configuration 클래스 분석
+        ↓
+@ComponentScan 발견
+        ↓
+지정된 package 탐색
+        ↓
+.class 파일 검색
+        ↓
+Annotation metadata 분석
+        ↓
+@Component 계열인지 확인
+        ↓
+BeanDefinition 생성
+        ↓
+BeanDefinitionRegistry에 등록
+        ↓
+실제 Bean 생성
+```
+
+이렇게 보니 너무너무 길어보이고, 정확히 어떤 뜻인지 모르겠으니, 하나씩 조금 더 자세히 살펴봅시다.
+
+#### ① Spring Container의 설정 클래스 분석
+
+Spring이 ApplicationContext를 초기화하면서 설정 정보를 읽습니다.
+이 과정에서 `@Configuration` 클래스 등을 처리하는 핵심 컴포넌트 중 하나가 `ConfigurationClassPostProcessor`입니다.
+<br>
+이 객체는 `@Configuration` 클래스를 처리하고, 그 내부의 `@ComponentScan`, `@Bean`, `@Import` 등의 설정을 분석하여 추가적인 BeanDefinition을 등록합니다.
+`ConfigurationClassPostProcessor`는 Spring에서 Configuration 클래스를 부트스트랩하기 위한 `BeanFactoryPostProcessor`입니다.
+
+#### ② `@ComponentScan` 발견
+
+설정 클래스를 분석하다가 다음을 발견합니다.
+
+```java
+@ComponentScan("com.example")
+```
+
+그러면 Spring은 _"com.example 아래에서 Component 후보를 찾아야겠다"_ 라고 판단합니다.
+이 과정에서 사용되는 핵심 클래스가 `ClassPathBeanDefinitionScanner`입니다.
+
+#### ③ Classpath 탐색
+
+Scanner는 지정한 패키지를 Classpath상의 경로로 변환합니다.
+
+개념적으로, `com.example`이 `com/example` 형태로 변환되고, 그 아래의 `.class` 파일들을 탐색합니다.
+
+```text
+com/example/UserService.class
+com/example/OrderService.class
+com/example/UserRepository.class
+...
+```
+
+이때 Spring이 모든 클래스를 무조건 `Class.forName(...)`으로 로딩한 뒤 Reflection을 돌리는 것은 아닙니다.
+
+일반적인 classpath scanning 과정에서 Spring의 `ClassPathScanningCandidateComponentProvider`는 `MetadataReader`를 사용하며, 이 메타데이터 읽기 기능은 ASM의 `ClassReader`를 기반으로 동작합니다.
+
+쉽게 말하면, 클래스를 실제로 모두 객체화하거나 로딩해서 검사하기보다 `.class` 파일의 메타데이터를 읽어 어노테이션 등의 정보를 확인할 수 있다는 것입니다.
+
+그래서
+
+```text
+UserService.class
+        ↓
+ASM으로 클래스 메타데이터 읽기
+        ↓
+@Service 발견
+        ↓
+@Service 위의 @Component 확인
+        ↓
+Bean 후보!
+```
+
+와 같은 과정이 가능합니다.
+
+#### ④ Bean 후보인지 필터링
+
+`ClassPathBeanDefinitionScanner`는 모든 클래스를 Bean으로 등록하지 않습니다.
+
+기본적으로 `@Component` 또는 `@Component`를 Meta Annotation으로 가지고 있는 클래스들을 후보로 판단합니다.
+
+따라서,
+
+```java
+public class NormalClass {
+}
+```
+
+는 기본 스캔 대상이 아니지만
+
+```java
+@Component
+public class ComponentClass {
+}
+```
+
+나
+
+```java
+@Service
+public class UserService {
+}
+```
+
+는 후보가 됩니다.
+
+`@ComponentScan`에는 필터도 지정할 수 있습니다.
+
+```java
+@ComponentScan(
+    basePackages = "com.example",
+    excludeFilters = {
+        @ComponentScan.Filter(
+            type = FilterType.ANNOTATION,
+            classes = Controller.class
+        )
+    }
+)
+```
+
+이런 식으로 특정 Component를 제외하거나 사용자 정의 조건에 맞는 클래스만 포함시킬 수도 있습니다.
+
+#### ⑤ BeanDefinition 만들기
+
+Bean 후보를 찾았다고 바로 `new UserService();`를 실행하는 것은 아닙니다.
+
+먼저 `BeanDefinition`을 만듭니다.
+
+개념적으로는 다음과 같은 정보가 담긴다고 생각하면 됩니다.
+
+```text
+BeanDefinition
+──────────────────────────
+Bean Class   : UserService
+Bean Name    : userService
+Scope        : singleton
+Lazy         : false
+Primary      : false
+Dependencies : ...
+──────────────────────────
+```
+
+즉, "나중에 UserService 객체를 만들 때 이렇게 만들어라."라는 설계도라고 할 수 있겠네요.
+
+#### ⑥Bean 이름 결정 및 등록
+
+Bean은 Container 안에서 이름도 가집니다.
+
+예를 들어
+
+```java
+@Service
+public class UserService {
+}
+```
+
+는 기본적인 이름 생성 규칙에 따라 보통 `userService`라는 이름으로 등록됩니다.
+
+직접 이름을 지정할 수도 있습니다.
+
+```java
+@Service("customUserService")
+public class UserService {
+}
+```
+
+이 경우 Bean의 이름은 `customUserService`가 됩니다.
+
+그리고 최종적으로 BeanDefinition이 `BeanDefinitionRegistry`에 등록됩니다.
+
+여기까지가 크게 보면 **Bean 등록 과정**입니다.
+
+그럼 Bean은 언제 **실제 객체**가 되는걸까요?
+
+BeanDefinition이 모두 준비되었다면 이제 Spring Container는 실제 Bean을 생성합니다.
+특히 기본 Scope인 `singleton` Bean은 일반적으로 ApplicationContext가 초기화되는 과정에서 미리 생성됩니다.
+물론 `@Lazy`가 붙어 있다면 실제로 필요할 때까지 생성을 미룰 수도 있습니다.
+
+이제 드디어 **Bean Lifecycle**이 시작됩니다.
+
+### Bean Lifecycle
+
+Spring Bean도 태어나고, 살아가고, 죽습니다.
+
+전체적인 라이프사이클을 단순화하면 다음과 같습니다.
+
+> 인스턴스화 → 의존성 주입(DI) → 초기화 콜백(Initialization) → 빈 사용 → 소멸 콜백(Destruction)
+
+조금 더 자세하게 풀면 아래와 같다고 볼 수 있죠.
+
+```text
+1. BeanDefinition 등록
+        ↓
+2. 의존성 확인
+        ↓
+3. Bean 객체 생성
+        ↓
+4. 의존성 주입
+        ↓
+5. 초기화 전 BeanPostProcessor
+        ↓
+6. @PostConstruct 등 초기화
+        ↓
+7. 초기화 후 BeanPostProcessor
+        ↓
+8. Bean 사용
+        ↓
+9. Container 종료
+        ↓
+10. @PreDestroy 등 소멸 처리
+```
+
+여기서 **BeanPostProcessor**는 무엇일까요?
+
+`BeanPostProcessor`는 이름 그대로 "Bean을 생성하는 과정에 끼어들어 추가적인 처리를 할 수 있도록 해주는 확장 지점"입니다.
+
+대표적으로 다음 두 메서드를 제공합니다.
+
+```java
+public interface BeanPostProcessor {
+
+    default Object postProcessBeforeInitialization(
+            Object bean,
+            String beanName) {
+        return bean;
+    }
+
+    default Object postProcessAfterInitialization(
+            Object bean,
+            String beanName) {
+        return bean;
+    }
+}
+```
+
+즉,
+
+```text
+Bean 생성
+   ↓
+BeanPostProcessor
+Before Initialization
+   ↓
+초기화
+   ↓
+BeanPostProcessor
+After Initialization
+   ↓
+Bean 사용
+```
+
+같은 구조가 됩니다.
+
+Spring 공식 문서에서도 `BeanPostProcessor`가 Bean의 초기화 콜백 전후에 호출되며, Bean을 검사하거나 심지어 프록시 객체로 감싸 반환할 수도 있다고 설명합니다.
+실제 Spring AOP 인프라의 일부 역시 이러한 `BeanPostProcessor` 메커니즘을 활용합니다.
+
+어, 근데! 어디서 많이 본 것 같지 않나요?
+<br>
+앞서 AOP를 공부할 때 실제 객체를 Proxy로 감싼다는 이야기를 했습니다.
+<br>
+바로 이런 Spring의 확장 지점 덕분에 Bean 생성 과정에서 Proxy 적용 같은 추가 작업을 수행할 수 있는 것입니다.
+
+### Bean Scope
+
+Bean Lifecycle을 이해했다면 이번에는 **Bean이 얼마나 오래 살아있는지** 알아볼까요?
+<br>
+이걸 결정하는 것이 바로 **Bean Scope**입니다.
+
+Scope는 쉽게 말하면,
+<br>
+_"Bean 객체를 몇 개 만들고, 어느 범위까지 공유할까?"_
+<br>
+를 결정합니다.
+
+Spring이 제공하는 대표적인 Scope는 다음과 같습니다.
+
+| Scope         | 의미                                               |
+| ------------- | ------------------------------------------------ |
+| `singleton`   | 하나의 Spring Container에서 BeanDefinition 하나당 하나의 객체 |
+| `prototype`   | Bean을 요청할 때마다 새로운 객체                             |
+| `request`     | HTTP Request 하나당 하나                              |
+| `session`     | HTTP Session 하나당 하나                              |
+| `application` | ServletContext 하나당 하나                            |
+| `websocket`   | WebSocket 하나당 하나                                 |
+
+Spring Framework는 이 여섯 종류의 기본 Scope를 제공하며, `request`, `session`, `application`, `websocket`은 Web-aware ApplicationContext에서 사용할 수 있습니다.
+
+몇가지 더 자세히 알아볼까요?
+
+#### ① singleton
+
+Spring Bean의 기본 Scope입니다.
+아무것도 지정하지 않으면 기본적으로 singleton이 적용됩니다.
+
+```java
+@Service
+public class UserService {
+}
+```
+
+라는 코드는 개념적으로는
+
+```java
+@Scope("singleton")
+@Service
+public class UserService {
+}
+```
+
+와 비슷합니다.
+
+예를 들어
+
+```java
+UserService userService1 = context.getBean(UserService.class);
+UserService userService2 = context.getBean(UserService.class);
+```
+
+라고 하면 일반적인 singleton Bean에서는 `userService1 == userService2`가 `true`인거죠.
+즉, 여러 곳에서 동일한 Bean을 공유하는 것입니다.
+
+여기서 주의해야 할 점은, singleton이라고 해서 Thread-safe한 것이 아니라는 것입니다.
+
+예를 들어
+
+```java
+@Service
+public class CounterService {
+
+    private int count = 0;
+
+    public void increase() {
+        count++;
+    }
+}
+```
+
+같은 mutable state를 singleton Bean 안에 두면 여러 요청이 동시에 같은 객체를 사용하면서 동시성 문제가 발생할 수 있습니다.
+<br>
+그래서 일반적인 Service Bean은 가능한 한 **상태를 가지지 않는 Stateless 객체**로 설계하는 것이 좋습니다.
+
+#### ② prototype
+
+Prototype Scope는 Bean을 요청할 때마다 새로운 객체를 생성합니다.
+
+```java
+@Component
+@Scope("prototype")
+public class PrototypeBean {
+}
+```
+
+그리고
+
+```java
+PrototypeBean bean1 =
+        context.getBean(PrototypeBean.class);
+
+PrototypeBean bean2 =
+        context.getBean(PrototypeBean.class);
+```
+
+를 실행한다면 `bean1 == bean2`는 `false`가 되겠죠.
+<br>
+Spring 공식 문서에서도 prototype Bean은 해당 Bean이 요청될 때마다 새로운 인스턴스를 생성한다고 설명합니다.
+
+그런데 prototype에는 아주 중요한 특징이 있습니다.
+<br>
+Spring은 Prototype Bean의 **생성, 의존성 주입, 초기화**까지는 관리하지만,
+Bean을 사용자에게 넘겨준 이후의 **완전한 lifecycle까지 계속 추적하지 않습니다.**
+따라서 prototype Bean의 destruction callback은 컨테이너가 자동으로 호출해주지 않습니다. 자원 정리가 필요한 Prototype Bean이라면 이를 직접 처리해야 합니다.
+
+#### ③ request
+
+Web Application에서 사용할 수 있는 Scope입니다.
+
+```java
+@Component
+@RequestScope
+public class RequestInfo {
+}
+```
+
+HTTP Request 하나마다 별도의 Bean이 만들어집니다.
+
+```text
+Request A ──→ RequestInfo A
+Request B ──→ RequestInfo B
+Request C ──→ RequestInfo C
+```
+
+한 Request 내부에서는 같은 객체를 사용하지만 다른 Request와는 공유하지 않습니다.
+
+#### ④ session
+
+HTTP Session 하나마다 Bean을 생성합니다.
+
+```java
+@Component
+@SessionScope
+public class UserSession {
+}
+```
+
+로그인 사용자별 상태 등을 관리하는 상황을 떠올릴 수 있겠네요.
+다만 서버의 세션 상태 관리 방식과 확장성을 고려해야 하므로 무분별하게 사용하는 것은 피하는 것이 좋습니다.
+
+### 정리
+
+그럼 우리 지금까지 배운 내용을 한 번에 이어볼까요?
+어노테이션으로 Bean이 등록되는 전체 과정을 다시 연결해봅시다.
+
+```java
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @PostConstruct
+    public void init() {
+        System.out.println("UserService 준비 완료!");
+    }
+}
+```
+
+그리고 애플리케이션을 실행합니다.
+
+```java
+@SpringBootApplication
+public class Application {
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+그러면 개념적으로 아래와 같은 과정이 벌어집니다.
+
+```text
+SpringApplication.run()
+          ↓
+ApplicationContext 생성
+          ↓
+@SpringBootApplication 분석
+          ↓
+@ComponentScan 발견
+          ↓
+base package 결정
+          ↓
+classpath 탐색
+          ↓
+UserService.class 발견
+          ↓
+ASM / MetadataReader로
+annotation metadata 확인
+          ↓
+@Service 발견
+          ↓
+@Service의 meta annotation인
+@Component 확인
+          ↓
+Bean Candidate 결정
+          ↓
+UserService용 BeanDefinition 생성
+          ↓
+BeanDefinitionRegistry 등록
+          ↓
+singleton Bean 생성 시점
+          ↓
+UserService 생성자 확인
+          ↓
+UserRepository Bean 탐색
+          ↓
+UserRepository 주입
+          ↓
+UserService 객체 생성
+          ↓
+BeanPostProcessor 처리
+          ↓
+@PostConstruct 호출
+          ↓
+필요한 후처리 및 Proxy 생성
+          ↓
+Singleton Bean으로 관리
+          ↓
+애플리케이션에서 사용
+          ↓
+ApplicationContext 종료
+          ↓
+@PreDestroy 등의 소멸 처리
+```
+
+처음에는 `@Service` 한 줄밖에 안 썼는데 그 뒤에서는 이렇게 많은 일이 벌어지고 있었던 것입니다.
+
+### @Bean
+
+근데, 우리는 `@Bean`이라는 어노테이션도 알고 있습니다.
+`@Bean`으로 등록하는 것은 어떻게 다를까요?
+
+Bean을 등록하는 방법이 Component Scan만 있는 것은 아닙니다.
+우리는 다음과 같이 직접 Bean을 등록할 수도 있습니다.
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+```
+
+`@Component` 방식은 "Spring아, 이 패키지를 뒤져서 Bean 후보를 찾아줘" 에 가깝다면,
+`@Bean` 방식은 "Spring아, 이 메서드가 반환하는 객체를 Bean으로 등록해줘" 에 가깝습니다.
+
+Spring 공식 문서에서도 `@Bean`은 해당 메서드가 생성하고 구성한 객체를 Spring IoC Container가 관리하도록 정의하는 방법이며, `@Configuration`은 Bean Definition의 소스 역할을 하는 클래스라고 설명합니다.
+
+그래서 우리가 직접 만든 클래스에는 보통 `@Service`, `@Repository`, `@Controller`, `@Component` 등을 사용하고,
+외부 라이브러리 객체처럼 우리가 해당 클래스 소스에 직접 `@Component`를 붙일 수 없는 경우에는 `@Bean`을 이용해서 등록하는 경우가 많습니다.
+
+### 🤔 하나의 Interface를 구현한 Service가 여러 개라면?
+
+마지막으로 실무에서 자주 만나게 되는 상황을 살펴봅시다.
+
+결제 기능이 있다고 해볼까요?
+
+```java
+public interface PaymentService {
+
+    void pay();
+}
+```
+
+그리고 구현체가 두 개 있습니다.
+
+```java
+@Service
+public class KakaoPaymentService
+        implements PaymentService {
+
+    @Override
+    public void pay() {
+        System.out.println("카카오페이 결제");
+    }
+}
+```
+
+```java
+@Service
+public class NaverPaymentService
+        implements PaymentService {
+
+    @Override
+    public void pay() {
+        System.out.println("네이버페이 결제");
+    }
+}
+```
+
+이제 다음 코드를 작성하면 어떻게 될까요?
+
+```java
+@Service
+public class OrderService {
+
+    private final PaymentService paymentService;
+
+    public OrderService(PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
+}
+```
+
+Spring 입장에서는 하나의 타입에 여러 Bean이 후보가 되기 때문에 PaymentService를 달라고 요청 받았을 때, 뭘 넣어줘야 하는지 난감해지겠죠.
+
+Spring 공식 문서에서도 type 기반 Autowiring에서 후보가 여러 개 존재할 경우 추가적인 선택 기준이 필요하다고 설명합니다.
+
+#### ① `@Primary`
+
+이 방법은 기본으로 사용할 구현체를 하나 지정합니다.
+
+```java
+@Primary
+@Service
+public class KakaoPaymentService
+        implements PaymentService {
+}
+```
+
+이제
+
+```java
+public OrderService(PaymentService paymentService) {
+    this.paymentService = paymentService;
+}
+```
+
+라고 하면 여러 후보 중 `@Primary`가 붙은 `KakaoPaymentService`가 우선적으로 선택됩니다.
+
+#### ② `@Qualifier`
+
+특정 구현체를 명확하게 선택하고 싶다면 `@Qualifier`를 사용할 수 있습니다.
+
+```java
+@Service
+public class OrderService {
+
+    private final PaymentService paymentService;
+
+    public OrderService(
+        @Qualifier("kakaoPaymentService")
+        PaymentService paymentService
+    ) {
+        this.paymentService = paymentService;
+    }
+}
+```
+
+Spring은 `PaymentService` 타입 후보 중 qualifier 조건에 맞는 Bean을 좁혀 선택합니다.
+
+조금 더 의미 있는 이름을 직접 지정할 수도 있습니다.
+
+```java
+@Service
+@Qualifier("kakao")
+public class KakaoPaymentService
+        implements PaymentService {
+}
+```
+
+```java
+@Service
+public class OrderService {
+
+    private final PaymentService paymentService;
+
+    public OrderService(
+        @Qualifier("kakao")
+        PaymentService paymentService
+    ) {
+        this.paymentService = paymentService;
+    }
+}
+```
+
+#### ③ 구현체를 전부 주입받기
+
+Spring은 같은 Interface를 구현한 Bean들을 한 번에 주입할 수도 있습니다.
+
+```java
+@Service
+public class PaymentManager {
+
+    private final List<PaymentService> paymentServices;
+
+    public PaymentManager(
+        List<PaymentService> paymentServices
+    ) {
+        this.paymentServices = paymentServices;
+    }
+}
+```
+
+이렇게 하면 `PaymentService`를 구현한 Bean들이 Collection으로 들어옵니다.
+
+또는 `Map`으로 받을 수도 있습니다.
+
+```java
+@Service
+public class PaymentManager {
+
+    private final Map<String, PaymentService> paymentServices;
+
+    public PaymentManager(
+        Map<String, PaymentService> paymentServices
+    ) {
+        this.paymentServices = paymentServices;
+    }
+
+    public void pay(String type) {
+        paymentServices.get(type).pay();
+    }
+}
+```
+
+### 정리하면,
+
+- **Spring Bean**은 Spring IoC Container가 생성하고 관리하는 객체입니다.
+- **Annotation**은 그 자체가 어떤 기능을 실행하는 명령어가 아니라, 프로그램이 읽을 수 있는 Metadata입니다.
+- `@ComponentScan`은 Classpath를 탐색하여 `@Component` 또는 이를 Meta Annotation으로 가지고 있는 클래스들을 찾아 BeanDefinition으로 등록합니다.
+- **Bean Lifecycle**은 단순화하면, *객체 생성 → 의존성 주입 → 초기화 → BeanPostProcessor → 사용 → 소멸*의 흐름을 가집니다.
+- **Bean Scope**는 해당 Bean 객체를 어느 범위까지 공유할 것인지를 결정합니다.
+
+결국 Spring Bean을 제대로 이해한다는 것은
+"Spring Container가 어떤 정보를 바탕으로 객체를 발견하고, 생성하고, 연결하고, 관리하는가?"
+를 이해하는 것이라고 볼 수 있겠네요!
 
 ---
 
